@@ -1,3 +1,6 @@
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 name: Generate TWRP Device Tree
 
 on:
@@ -10,7 +13,7 @@ on:
       IMG_URL:
         description: 'URL to recovery/boot image'
         required: true
-        default: 'https://github.com/momo54181/action_build_twrp_device_tree/raw/main/recovery.img'
+        default: 'https://github.com/Xxinn034/action_build_twrp_device_tree/raw/refs/heads/master/recovery.img'
 
 jobs:
   generate-device-tree:
@@ -39,8 +42,8 @@ jobs:
     - name: Download recovery image
       run: |
         wget -O recovery.img "${{ github.event.inputs.IMG_URL }}"
-        file recovery.img || true  # Display file info for debugging
-      
+        file recovery.img || true
+        
     - name: Generate device tree
       run: |
         mkdir -p device_tree_output
@@ -55,7 +58,7 @@ jobs:
         cd ..
         
     - name: Create release with device tree
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: DeviceTree_${{ github.run_number }}.zip
         name: TWRP_Device_Tree_${{ github.run_number }}
