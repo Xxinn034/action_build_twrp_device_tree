@@ -1,0 +1,42 @@
+name: Generate TWRP device tree(lagecy)
+
+on:
+  workflow_dispatch:
+    inputs:
+      recovery_url:
+        description: 'Direct URL to recovery.img or boot.img'
+        required: true
+        default: ''
+
+jobs:
+  generate-device-tree:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3 python3-pip cpio wget zip unzip
+
+      - name: Install twrpdtgen (compatible with Android 4.2)
+        run: pip3 install twrpdtgen==1.6.0
+
+      - name: Download recovery image
+        run: |
+          wget -O recovery.img "${{ github.event.inputs.recovery_url }}"
+          file recovery.img || true
+
+      - name: Generate device tree
+        run: |
+          mkdir -p device_tree_output
+          python3 -m twrpdtgen -o device_tree_output recovery.img
+
+      - name: Upload device tree
+        uses: softprops/action-gh-release@v2
+        with:
+          files: device_tree_output/*.zip
+          tag_name: device-tree-${{ github.run_number }}
+          name: Device Tree ${{ github.run_number }}
+          generate_release_notes: false
