@@ -1,4 +1,4 @@
-name: Generate TWRP device tree(lagecy)
+name: Generate TWRP device tree（legacy）
 
 on:
   workflow_dispatch:
@@ -33,10 +33,16 @@ jobs:
           mkdir -p device_tree_output
           python3 -m twrpdtgen -o device_tree_output recovery.img
 
+      - name: Package device tree
+        run: |
+          cd device_tree_output
+          zip -r ../device_tree.zip .
+          cd ..
+
       - name: Upload device tree
         uses: softprops/action-gh-release@v2
         with:
-          files: device_tree_output/*.zip
+          files: device_tree.zip
           tag_name: device-tree-${{ github.run_number }}
           name: Device Tree ${{ github.run_number }}
           generate_release_notes: false
