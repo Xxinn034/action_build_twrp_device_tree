@@ -1,0 +1,42 @@
+- name:tset
+  run: wget -O recovery.img "https://github.com/Xxinn034/action_build_twrp_device_tree/raw/refs/heads/master/recovery.img"
+
+- name: Patch recovery.img with missing build.prop property
+  run: |
+    # 克隆 Android Image Kitchen
+    git clone https://github.com/osm0sis/Android-Image-Kitchen.git aik
+    cp recovery.img aik/
+    cd aik
+    
+    # 解包镜像
+    chmod +x unpackimg.sh repackimg.sh
+    ./unpackimg.sh recovery.img
+    
+    # 检查 ramdisk 中的 build.prop 是否存在，若不存在则跳过（但通常会存在）
+    if [ -f ramdisk/build.prop ]; then
+      # 追加缺失的属性（日期可自定义）
+      echo "ro.build.version.security_patch=2026-08-01" >> ramdisk/build.prop
+      echo "Patch added to build.prop"
+    else
+      echo "WARNING: build.prop not found in ramdisk, trying system root..."
+      # 有些镜像的 build.prop 可能在 system 目录下
+      if [ -f ramdisk/system/build.prop ]; then
+        echo "ro.build.version.security_patch=2026-08-01" >> ramdisk/system/build.prop
+      else
+        echo "ERROR: Cannot find build.prop, abort."
+        exit 1
+      fi
+    fi
+    
+    # 重新打包
+    ./repackimg.sh
+    
+    # 将新生成的镜像复制回工作目录并覆盖原文件
+    cp image-new.img ../recovery.img
+    cd ..
+    rm -rf aik
+
+- name: Generate device tree
+  run: |
+    mkdir -p device_tree_output
+    python3 -m twrpdtgen -o device_tree_output recovery.img
