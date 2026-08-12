@@ -1,7 +1,7 @@
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-name: Generate TWRP Device Tree (test)
+name: Generate TWRP Device Tree
 
 on:
   workflow_dispatch:
@@ -33,7 +33,8 @@ jobs:
           cpio \
           wget \
           zip \
-          unzip
+          unzip \
+          abootimg   # 新增安装 abootimg
 
     - name: Install TWRP generator
       run: |
@@ -44,41 +45,42 @@ jobs:
         wget -O recovery.img "${{ github.event.inputs.IMG_URL }}"
         file recovery.img || true
 
-    # --- 新增的预处理步骤：修补 recovery.img ---
+    # --- 新的预处理步骤：使用 abootimg 修补 build.prop ---
     - name: Patch recovery.img with missing build.prop property
       run: |
-        # 1. 克隆 Android Image Kitchen (AIK) 工具
-        git clone https://github.com/osm0sis/Android-Image-Kitchen.git aik
-        cp recovery.img aik/
-        cd aik
+        # 1. 解包 recovery.img
+        abootimg -x recovery.img
+        # 生成 bootimg.cfg, kernel, initrd.img
 
-        # 2. 确保脚本有执行权限
-        chmod +x unpackimg.sh repackimg.sh
+        # 2. 解压 initrd (ramdisk)
+        mkdir initrd
+        cd initrd
+        gunzip -c ../initrd.img | cpio -i
 
-        # 3. 解包 recovery.img
-        ./unpackimg.sh recovery.img
-
-        # 4. 查找 build.prop 文件并添加缺失的属性
-        #    首先检查 ramdisk 根目录，然后是 system 子目录
-        if [ -f ramdisk/build.prop ]; then
-          echo "ro.build.version.security_patch=2026-08-01" >> ramdisk/build.prop
-          echo "Patch added to ramdisk/build.prop"
-        elif [ -f ramdisk/system/build.prop ]; then
-          echo "ro.build.version.security_patch=2026-08-01" >> ramdisk/system/build.prop
-          echo "Patch added to ramdisk/system/build.prop"
+        # 3. 查找 build.prop 并添加缺失属性
+        if [ -f build.prop ]; then
+          echo "ro.build.version.security_patch=2026-08-01" >> build.prop
+          echo "Patch added to build.prop (root)"
+        elif [ -f system/build.prop ]; then
+          echo "ro.build.version.security_patch=2026-08-01" >> system/build.prop
+          echo "Patch added to system/build.prop"
         else
-          echo "ERROR: Cannot find build.prop, abort."
+          echo "ERROR: build.prop not found in ramdisk"
           exit 1
         fi
 
-        # 5. 重新打包镜像
-        ./repackimg.sh
-
-        # 6. 将新生成的镜像复制回工作目录，并覆盖原文件
-        cp image-new.img ../recovery.img
+        # 4. 重新打包 initrd
+        find . | cpio -o -H newc | gzip > ../new-initrd.img
         cd ..
-        # 7. 清理 AIK 目录
-        rm -rf aik
+
+        # 5. 重新打包 recovery.img
+        abootimg --create new-recovery.img -f bootimg.cfg -k kernel -r new-initrd.img
+
+        # 6. 覆盖原 recovery.img
+        cp new-recovery.img recovery.img
+
+        # 7. 清理临时文件
+        rm -rf initrd kernel initrd.img new-initrd.img bootimg.cfg new-recovery.img
     # -------------------------------------------
 
     - name: Generate device tree
