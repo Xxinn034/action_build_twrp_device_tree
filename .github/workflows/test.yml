@@ -1,7 +1,7 @@
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-name: Generate TWRP Device Tree(test)
+name: Generate TWRP Device Tree
 
 on:
   workflow_dispatch:
@@ -51,7 +51,6 @@ jobs:
       run: |
         # 1. 解包 recovery.img
         abootimg -x recovery.img
-        # 生成 bootimg.cfg, zImage, initrd.img
 
         # 2. 智能解压 initrd (ramdisk)
         mkdir initrd
@@ -79,29 +78,24 @@ jobs:
             ;;
         esac
 
-        # 3. 查找 build.prop 并添加缺失属性
-        if [ -f build.prop ]; then
-          echo "ro.build.version.security_patch=2026-08-01" >> build.prop
-          echo "Patch added to build.prop (root)"
-        elif [ -f system/build.prop ]; then
-          echo "ro.build.version.security_patch=2026-08-01" >> system/build.prop
-          echo "Patch added to system/build.prop"
-        else
-          echo "ERROR: build.prop not found in ramdisk"
-          exit 1
-        fi
+        # 3. 查找所有 build.prop 并添加属性
+        echo "Searching for all build.prop files..."
+        find . -name "build.prop" -type f | while read -r file; do
+          echo "Patching $file"
+          echo "ro.build.version.security_patch=2026-08-01" >> "$file"
+        done
 
         # 4. 重新打包 initrd（使用 gzip 压缩）
         find . | cpio -o -H newc | gzip > ../new-initrd.img
         cd ..
 
-        # 5. 重新打包 recovery.img - 注意内核文件名是 zImage
+        # 5. 重新打包 recovery.img
         abootimg --create new-recovery.img -f bootimg.cfg -k zImage -r new-initrd.img
 
         # 6. 覆盖原 recovery.img
         cp new-recovery.img recovery.img
 
-        # 7. 清理临时文件（包括 zImage）
+        # 7. 清理临时文件
         rm -rf initrd zImage initrd.img new-initrd.img bootimg.cfg new-recovery.img
 
     - name: Generate device tree
