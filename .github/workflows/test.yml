@@ -36,7 +36,7 @@ jobs:
           unzip \
           abootimg \
           lz4 \
-          xz-utils   # 支持 lz4 和 xz 解压
+          xz-utils
 
     - name: Install TWRP generator
       run: |
@@ -51,12 +51,11 @@ jobs:
       run: |
         # 1. 解包 recovery.img
         abootimg -x recovery.img
-        # 生成 bootimg.cfg, kernel, initrd.img
+        # 生成 bootimg.cfg, zImage, initrd.img
 
         # 2. 智能解压 initrd (ramdisk)
         mkdir initrd
         cd initrd
-        # 检测文件类型
         file_type=$(file -b --mime-type ../initrd.img)
         echo "Detected initrd type: $file_type"
 
@@ -71,7 +70,6 @@ jobs:
             xz -c -d ../initrd.img | cpio -i
             ;;
           *)
-            # 尝试直接作为 cpio 存档（无压缩）
             if cpio -i < ../initrd.img 2>/dev/null; then
               echo "Extracted as uncompressed cpio"
             else
@@ -97,14 +95,14 @@ jobs:
         find . | cpio -o -H newc | gzip > ../new-initrd.img
         cd ..
 
-        # 5. 重新打包 recovery.img
-        abootimg --create new-recovery.img -f bootimg.cfg -k kernel -r new-initrd.img
+        # 5. 重新打包 recovery.img - 注意内核文件名是 zImage
+        abootimg --create new-recovery.img -f bootimg.cfg -k zImage -r new-initrd.img
 
         # 6. 覆盖原 recovery.img
         cp new-recovery.img recovery.img
 
-        # 7. 清理临时文件
-        rm -rf initrd kernel initrd.img new-initrd.img bootimg.cfg new-recovery.img
+        # 7. 清理临时文件（包括 zImage）
+        rm -rf initrd zImage initrd.img new-initrd.img bootimg.cfg new-recovery.img
 
     - name: Generate device tree
       run: |
