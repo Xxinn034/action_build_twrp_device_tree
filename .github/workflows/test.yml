@@ -34,7 +34,9 @@ jobs:
           wget \
           zip \
           unzip \
-          abootimg   # 新增安装 abootimg
+          abootimg \
+          lz4 \
+          xz-utils   # 支持 lz4 和 xz 解压
 
     - name: Install TWRP generator
       run: |
@@ -45,17 +47,39 @@ jobs:
         wget -O recovery.img "${{ github.event.inputs.IMG_URL }}"
         file recovery.img || true
 
-    # --- 新的预处理步骤：使用 abootimg 修补 build.prop ---
     - name: Patch recovery.img with missing build.prop property
       run: |
         # 1. 解包 recovery.img
         abootimg -x recovery.img
         # 生成 bootimg.cfg, kernel, initrd.img
 
-        # 2. 解压 initrd (ramdisk)
+        # 2. 智能解压 initrd (ramdisk)
         mkdir initrd
         cd initrd
-        gunzip -c ../initrd.img | cpio -i
+        # 检测文件类型
+        file_type=$(file -b --mime-type ../initrd.img)
+        echo "Detected initrd type: $file_type"
+
+        case $file_type in
+          application/gzip)
+            gunzip -c ../initrd.img | cpio -i
+            ;;
+          application/x-lz4)
+            lz4 -c -d ../initrd.img | cpio -i
+            ;;
+          application/x-xz)
+            xz -c -d ../initrd.img | cpio -i
+            ;;
+          *)
+            # 尝试直接作为 cpio 存档（无压缩）
+            if cpio -i < ../initrd.img 2>/dev/null; then
+              echo "Extracted as uncompressed cpio"
+            else
+              echo "ERROR: Unable to extract initrd.img (unknown format)"
+              exit 1
+            fi
+            ;;
+        esac
 
         # 3. 查找 build.prop 并添加缺失属性
         if [ -f build.prop ]; then
@@ -69,7 +93,7 @@ jobs:
           exit 1
         fi
 
-        # 4. 重新打包 initrd
+        # 4. 重新打包 initrd（使用 gzip 压缩）
         find . | cpio -o -H newc | gzip > ../new-initrd.img
         cd ..
 
@@ -81,7 +105,6 @@ jobs:
 
         # 7. 清理临时文件
         rm -rf initrd kernel initrd.img new-initrd.img bootimg.cfg new-recovery.img
-    # -------------------------------------------
 
     - name: Generate device tree
       run: |
