@@ -33,10 +33,7 @@ jobs:
           cpio \
           wget \
           zip \
-          unzip \
-          abootimg \
-          lz4 \
-          xz-utils
+          unzip
 
     - name: Install TWRP generator
       run: |
@@ -47,56 +44,18 @@ jobs:
         wget -O recovery.img "${{ github.event.inputs.IMG_URL }}"
         file recovery.img || true
 
-    - name: Patch recovery.img with missing build.prop property
+    # ===== 关键修补步骤 =====
+    - name: Patch sebaubuntu-libs to ignore missing security_patch
       run: |
-        # 1. 解包 recovery.img
-        abootimg -x recovery.img
-
-        # 2. 智能解压 initrd (ramdisk)
-        mkdir initrd
-        cd initrd
-        file_type=$(file -b --mime-type ../initrd.img)
-        echo "Detected initrd type: $file_type"
-
-        case $file_type in
-          application/gzip)
-            gunzip -c ../initrd.img | cpio -i
-            ;;
-          application/x-lz4)
-            lz4 -c -d ../initrd.img | cpio -i
-            ;;
-          application/x-xz)
-            xz -c -d ../initrd.img | cpio -i
-            ;;
-          *)
-            if cpio -i < ../initrd.img 2>/dev/null; then
-              echo "Extracted as uncompressed cpio"
-            else
-              echo "ERROR: Unable to extract initrd.img (unknown format)"
-              exit 1
-            fi
-            ;;
-        esac
-
-        # 3. 查找所有 build.prop 并添加属性
-        echo "Searching for all build.prop files..."
-        find . -name "build.prop" -type f | while read -r file; do
-          echo "Patching $file"
-          echo "ro.build.version.security_patch=2026-08-01" >> "$file"
-        done
-
-        # 4. 重新打包 initrd（使用 gzip 压缩）
-        find . | cpio -o -H newc | gzip > ../new-initrd.img
-        cd ..
-
-        # 5. 重新打包 recovery.img
-        abootimg --create new-recovery.img -f bootimg.cfg -k zImage -r new-initrd.img
-
-        # 6. 覆盖原 recovery.img
-        cp new-recovery.img recovery.img
-
-        # 7. 清理临时文件
-        rm -rf initrd zImage initrd.img new-initrd.img bootimg.cfg new-recovery.img
+        SITE_PACKAGES=$(python3 -c "import site; print(site.getusersitepackages())")
+        FILE="$SITE_PACKAGES/sebaubuntu_libs/libandroid/device_info.py"
+        echo "Patching $FILE"
+        # 备份原文件
+        cp "$FILE" "$FILE.bak"
+        # 将 raise AssertionError(...) 替换为 return "2026-08-01"
+        sed -i 's/raise AssertionError(f.*)/return "2026-08-01"/' "$FILE"
+        echo "Patch applied successfully"
+    # =========================
 
     - name: Generate device tree
       run: |
